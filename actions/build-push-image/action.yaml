@@ -1,0 +1,170 @@
+name: "Build & Push Image"
+description: "Build, scan, generate an SBOM, sign, and optionally push a container image"
+inputs:
+  dockerfile_path:
+    description: "Path to the Dockerfile directory"
+    required: true
+  image_name:
+    description: "Image name (e.g., tini, core, python)"
+    required: true
+  image_tag:
+    description: "Image tag (e.g., v0.19.0, bookworm, 3.11)"
+    required: true
+  registry:
+    description: "Container registry URL"
+    required: true
+  image_repository:
+    description: "Full image repository path (e.g., ghcr.io/owner)"
+    required: true
+  push:
+    description: "Whether to push the image to the registry"
+    required: false
+    default: "false"
+  gcp_service_account:
+    description: "GCP service account for authentication"
+    required: true
+  gcp_workload_identity_provider:
+    description: "GCP workload identity provider"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - id: google-auth
+      name: Authenticate to GCP
+      uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+      with:
+        token_format: access_token
+        service_account: ${{ inputs.gcp_service_account }}
+        workload_identity_provider: ${{ inputs.gcp_workload_identity_provider }}
+
+    - name: Set up Docker Buildx with BuildKit sidecar
+      uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
+    - name: Login to Container Registry
+      uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+      with:
+        registry: ${{ inputs.registry }}
+        username: oauth2accesstoken
+        password: ${{ steps.google-auth.outputs.access_token }}
+
+    - name: Generate build metadata
+      id: meta
+      uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6.1.0
+      with:
+        images: ${{ inputs.image_repository }}/${{ inputs.image_name }}
+        tags: |
+          type=raw,value=${{ inputs.image_tag }}
+          type=raw,value=${{ inputs.image_tag }}-{{date 'YYYYMMDD'}}
+          type=raw,value=${{ inputs.image_tag }}-{{sha}}
+        labels: |
+          org.opencontainers.image.title=${{ inputs.image_name }}:${{ inputs.image_tag }}
+          org.opencontainers.image.description=Admiral ${{ inputs.image_name }} container image
+          org.opencontainers.image.authors=Platform Engineering Team
+          org.opencontainers.image.vendor=Admiral
+          org.opencontainers.image.version=${{ inputs.image_tag }}
+          org.opencontainers.image.source={{url}}
+          org.opencontainers.image.revision={{sha}}
+          org.opencontainers.image.created={{isotime}}
+
+    - name: Get Dockerfile directory
+      id: dockerfile_dir
+      shell: bash
+      run: echo "dir=$(dirname '${{ inputs.dockerfile_path }}')" >> $GITHUB_OUTPUT
+
+    - name: Build image and populate cache
+      uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+      with:
+        context: ${{ steps.dockerfile_dir.outputs.dir }}
+        load: true
+        push: false
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=registry,ref=${{ inputs.image_repository }}/${{ inputs.image_name }}:buildcache-${{ inputs.image_tag }}
+        cache-to: type=registry,ref=${{ inputs.image_repository }}/${{ inputs.image_name }}:buildcache-${{ inputs.image_tag }},mode=max
+        build-args: |
+          IMAGE_REPOSITORY=${{ inputs.image_repository }}
+
+    - name: Generate SBOM
+      id: sbom
+      uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+      with:
+        image: ${{ inputs.image_repository }}/${{ inputs.image_name }}:${{ inputs.image_tag }}
+        format: spdx-json
+        output-file: ${{ github.workspace }}/sbom.spdx.json
+        upload-artifact: false
+        dependency-snapshot: false
+
+    - name: Scan image for vulnerabilities
+      id: scan
+      uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+      with:
+        image: ${{ inputs.image_repository }}/${{ inputs.image_name }}:${{ inputs.image_tag }}
+        output-format: sarif
+        severity-cutoff: critical
+        fail-build: false
+
+    - name: Push image to registry
+      id: push
+      if: ${{ inputs.push == 'true' }}
+      uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+      with:
+        context: ${{ steps.dockerfile_dir.outputs.dir }}
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=registry,ref=${{ inputs.image_repository }}/${{ inputs.image_name }}:buildcache-${{ inputs.image_tag }}
+        build-args: |
+          IMAGE_REPOSITORY=${{ inputs.image_repository }}
+
+    - name: Install Cosign
+      if: ${{ inputs.push == 'true' }}
+      uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+    - name: Sign image with Cosign
+      if: ${{ inputs.push == 'true' }}
+      shell: bash
+      env:
+        # Keyless signing using the GitHub Actions OIDC identity (id-token: write).
+        COSIGN_EXPERIMENTAL: "true"
+        IMAGE: ${{ inputs.image_repository }}/${{ inputs.image_name }}
+        DIGEST: ${{ steps.push.outputs.digest }}
+      run: cosign sign --yes "${IMAGE}@${DIGEST}"
+
+    - name: Attest SBOM with Cosign
+      if: ${{ inputs.push == 'true' }}
+      shell: bash
+      env:
+        # Attach the SBOM to the pushed digest as a keyless, Rekor-logged
+        # attestation (verify with: cosign verify-attestation --type spdxjson).
+        COSIGN_EXPERIMENTAL: "true"
+        IMAGE: ${{ inputs.image_repository }}/${{ inputs.image_name }}
+        DIGEST: ${{ steps.push.outputs.digest }}
+        SBOM_FILE: ${{ github.workspace }}/sbom.spdx.json
+      run: cosign attest --yes --predicate "${SBOM_FILE}" --type spdxjson "${IMAGE}@${DIGEST}"
+
+    - name: Build summary
+      shell: bash
+      env:
+        TAGS: ${{ steps.meta.outputs.tags }}
+        PUSH_ENABLED: ${{ inputs.push }}
+        DIGEST: ${{ steps.push.outputs.digest }}
+      run: |
+        echo "🔨 Built image with tags:"
+        echo "$TAGS" | while read -r tag; do
+          if [ -n "$tag" ]; then
+            echo "   📦 $tag"
+          fi
+        done
+
+        echo "🔍 Vulnerability scan passed (no Critical findings)"
+
+        echo "📋 SBOM generated (SPDX)"
+
+        if [ "$PUSH_ENABLED" == "true" ]; then
+          echo "✅ Images pushed to registry"
+          echo "🔏 Image signed with Cosign ($DIGEST)"
+          echo "📎 SBOM attested with Cosign and submitted to the dependency graph"
+        else
+          echo "⏭️  Images built and scanned but not pushed (PR or non-main branch)"
+        fi

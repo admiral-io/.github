@@ -1,0 +1,66 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "admiral-io org-wide Renovate preset. Per-repo configs extend this via {\"extends\": [\"local>admiral-io/.github\"]}.",
+  "extends": [
+    "config:recommended",
+    ":disableDependencyDashboard",
+    ":semanticCommits",
+    ":semanticCommitTypeAll(chore)",
+    "group:allNonMajor",
+    "schedule:earlyMondays"
+  ],
+  "timezone": "America/New_York",
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 10,
+  "rangeStrategy": "bump",
+  "minimumReleaseAge": "7 days",
+  "internalChecksFilter": "strict",
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["dependencies", "security"],
+    "schedule": ["at any time"]
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on the first day of the month"]
+  },
+  "packageRules": [
+    {
+      "description": "admiral SDK packages — bump on any release, no delay (we control them)",
+      "matchPackageNames": [
+        "go.admiral.io/sdk",
+        "/^github.com/admiral-io//"
+      ],
+      "groupName": "admiral SDK",
+      "schedule": ["at any time"],
+      "minimumReleaseAge": "0 minutes"
+    },
+    {
+      "description": "Admiral container images (ghcr.io) — bump on any release",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["/^ghcr.io/admiral-io//"],
+      "groupName": "admiral images",
+      "schedule": ["at any time"],
+      "minimumReleaseAge": "0 minutes"
+    },
+    {
+      "description": "GitHub Actions — group bumps, pin to SHA, keep version comment",
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions",
+      "pinDigests": true
+    },
+    {
+      "description": "Group Go indirect dep patch/minor bumps",
+      "matchManagers": ["gomod"],
+      "matchDepTypes": ["indirect"],
+      "matchUpdateTypes": ["patch", "minor"],
+      "groupName": "go indirect deps"
+    },
+    {
+      "description": "Group all @types/* updates together (they tend to move with their parent package major)",
+      "matchPackageNames": ["/^@types\\//"],
+      "groupName": "TypeScript type definitions"
+    }
+  ]
+}
