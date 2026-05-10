@@ -1,0 +1,59 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "admiral-io org-wide Renovate preset. Per-repo configs extend this via {\"extends\": [\"local>admiral-io/.github\"]}.",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    ":semanticCommitTypeAll(chore)",
+    "group:allNonMajor",
+    "schedule:earlyMondays"
+  ],
+  "timezone": "America/New_York",
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 10,
+  "rangeStrategy": "bump",
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on the first day of the month"]
+  },
+  "packageRules": [
+    {
+      "description": "admiral SDK packages — bump on any release, no delay (we control them)",
+      "matchPackageNames": [
+        "go.admiral.io/sdk",
+        "/^github.com/admiral-io//"
+      ],
+      "groupName": "admiral SDK",
+      "schedule": ["at any time"],
+      "minimumReleaseAge": "0 minutes"
+    },
+    {
+      "description": "Admiral container images (ghcr.io) — bump on any release",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["/^ghcr.io/admiral-io//"],
+      "groupName": "admiral images",
+      "schedule": ["at any time"],
+      "minimumReleaseAge": "0 minutes"
+    },
+    {
+      "description": "GitHub Actions — group bumps, pin to SHA, keep version comment",
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions",
+      "pinDigests": true
+    },
+    {
+      "description": "admiral-protos: do not bump go-yit. It's pinned via replace directive to work around a yaml.v3/v4 type conflict in vmware-labs/yaml-jsonpath. Remove this rule when yaml-jsonpath publishes a yaml/v4-compatible release.",
+      "matchPackageNames": ["github.com/dprotaso/go-yit"],
+      "enabled": false
+    },
+    {
+      "description": "Patch/minor dev deps in protos tooling — group and let through quickly",
+      "matchFileNames": ["go.mod"],
+      "matchDepTypes": ["indirect"],
+      "matchUpdateTypes": ["patch", "minor"],
+      "automerge": false,
+      "groupName": "go indirect deps"
+    }
+  ]
+}
