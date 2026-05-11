@@ -11,8 +11,11 @@ resource that fills this purpose.
 - [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md): community behavior expectations, based on Contributor Covenant 3.0
 - [CONTRIBUTING.md](CONTRIBUTING.md): how to file issues and open pull requests
 - [SECURITY.md](SECURITY.md): how to report security vulnerabilities
-- [RELEASE.md](RELEASE.md): cross-org release runbook
 - [default.json](default.json): Renovate preset (see below)
+
+The cross-org release runbook lives in
+[admiral-protos/RELEASE.md](https://github.com/admiral-io/admiral-protos/blob/master/RELEASE.md)
+— next to the release engine it documents.
 
 ## Overriding for a specific repo
 
