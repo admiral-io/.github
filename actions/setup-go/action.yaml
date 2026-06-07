@@ -1,0 +1,35 @@
+name: "Setup Go"
+description: "Setup Go with caching for faster builds"
+
+inputs:
+  go-version:
+    description: "Go version override (uses go-version-file by default)"
+    required: false
+  go-version-file:
+    description: "Path to the go.mod that pins the Go version (for repos where the module is not at the root)"
+    required: false
+    default: "go.mod"
+  github-token:
+    description: "GitHub token for private module access (requires cross-repo read)"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Configure private Go modules
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: |
+        git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
+    - name: Setup Go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version: ${{ inputs.go-version }}
+        go-version-file: ${{ inputs.go-version == '' && inputs.go-version-file || '' }}
+        cache: true
+        cache-dependency-path: |
+          **/go.sum
+    - name: Set GOPRIVATE
+      shell: bash
+      run: go env -w GOPRIVATE='github.com/admiral-io/*'

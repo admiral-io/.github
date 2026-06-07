@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Something else about Admiral
+    url: https://github.com/admiral-io/admiral-community/issues/new/choose
+    about: The web console, the API, the Kubernetes agent, the docs, or anything you are not sure about.
+  - name: Ask a question
+    url: https://github.com/admiral-io/admiral-community/discussions
+    about: Questions and ideas that are not yet a request.
+  - name: Report a security vulnerability
+    url: https://github.com/admiral-io/.github/blob/master/SECURITY.md
+    about: Email security@admiral.io. Please do not open a public issue.
