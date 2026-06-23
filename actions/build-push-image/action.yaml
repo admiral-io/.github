@@ -101,6 +101,7 @@ runs:
       with:
         image: ${{ inputs.image_repository }}/${{ inputs.image_name }}:${{ inputs.image_tag }}
         output-format: sarif
+        severity-cutoff: critical
         fail-build: false
 
     - name: Upload scan results to GitHub Security
