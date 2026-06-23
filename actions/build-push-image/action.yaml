@@ -106,6 +106,7 @@ runs:
 
     - name: Upload scan results to GitHub Security
       if: ${{ !cancelled() && steps.scan.outputs.sarif != '' }}
+      continue-on-error: true
       uses: github/codeql-action/upload-sarif@1a818fd5f97ed0ee9a823421bd5b171add01227f # v4.36.2
       with:
         sarif_file: ${{ steps.scan.outputs.sarif }}
