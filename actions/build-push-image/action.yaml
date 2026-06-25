@@ -8,8 +8,9 @@ inputs:
     description: "Image name (e.g., tini, core, python)"
     required: true
   image_tag:
-    description: "Image tag (e.g., v0.19.0, bookworm, 3.11)"
-    required: true
+    description: "Floating image tag (e.g., latest, v0.19.0). Short and long commit SHA tags are always added alongside it."
+    required: false
+    default: "latest"
   registry:
     description: "Container registry URL"
     required: true
@@ -55,8 +56,8 @@ runs:
         images: ${{ inputs.image_repository }}/${{ inputs.image_name }}
         tags: |
           type=raw,value=${{ inputs.image_tag }}
-          type=raw,value=${{ inputs.image_tag }}-{{date 'YYYYMMDD'}}
-          type=raw,value=${{ inputs.image_tag }}-{{sha}}
+          type=sha,prefix=,format=short
+          type=sha,prefix=,format=long
         labels: |
           org.opencontainers.image.title=${{ inputs.image_name }}:${{ inputs.image_tag }}
           org.opencontainers.image.description=Admiral ${{ inputs.image_name }} container image
