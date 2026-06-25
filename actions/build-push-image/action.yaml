@@ -86,31 +86,35 @@ runs:
         build-args: |
           IMAGE_REPOSITORY=${{ inputs.image_repository }}
 
-    - name: Generate SBOM
-      id: sbom
-      uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
-      with:
-        image: ${{ inputs.image_repository }}/${{ inputs.image_name }}:${{ inputs.image_tag }}
-        format: spdx-json
-        output-file: ${{ github.workspace }}/sbom.spdx.json
-        upload-artifact: false
-        dependency-snapshot: false
+    - name: Install Trivy
+      shell: bash
+      run: |
+        curl -sSfL https://github.com/aquasecurity/trivy/releases/download/v0.71.2/trivy_0.71.2_Linux-64bit.tar.gz \
+          | sudo tar -xz -C /usr/local/bin trivy
+        trivy --version
+
+    - name: Generate SBOM (SPDX)
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }} # authenticate the Trivy DB pull from ghcr.io
+        IMAGE: ${{ inputs.image_repository }}/${{ inputs.image_name }}:${{ inputs.image_tag }}
+      run: trivy image --format spdx-json --output "${{ github.workspace }}/sbom.spdx.json" "$IMAGE"
 
     - name: Scan image for vulnerabilities
-      id: scan
-      uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
-      with:
-        image: ${{ inputs.image_repository }}/${{ inputs.image_name }}:${{ inputs.image_tag }}
-        output-format: sarif
-        severity-cutoff: critical
-        fail-build: false
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        IMAGE: ${{ inputs.image_repository }}/${{ inputs.image_name }}:${{ inputs.image_tag }}
+      # Warn-only on publish: surface CRITICALs via SARIF (Security tab) but never
+      # fail the release -- the PR gate is the enforcement point. exit-code stays 0.
+      run: trivy image --format sarif --output "${{ github.workspace }}/trivy-results.sarif" --severity CRITICAL --exit-code 0 "$IMAGE"
 
     - name: Upload scan results to GitHub Security
-      if: ${{ !cancelled() && steps.scan.outputs.sarif != '' }}
+      if: ${{ !cancelled() && hashFiles('trivy-results.sarif') != '' }}
       continue-on-error: true
       uses: github/codeql-action/upload-sarif@1a818fd5f97ed0ee9a823421bd5b171add01227f # v4.36.2
       with:
-        sarif_file: ${{ steps.scan.outputs.sarif }}
+        sarif_file: ${{ github.workspace }}/trivy-results.sarif
         category: ${{ inputs.image_name }}-${{ inputs.image_tag }}
 
     - name: Push image to registry
@@ -166,7 +170,7 @@ runs:
           fi
         done
 
-        echo "🔍 Vulnerability scan passed (no Critical findings)"
+        echo "🔍 Vulnerability scan completed (CRITICALs, if any, reported to the Security tab)"
 
         echo "📋 SBOM generated (SPDX)"
 
