@@ -8,8 +8,9 @@ inputs:
     description: "Image name (e.g., tini, core, python)"
     required: true
   image_tag:
-    description: "Image tag (e.g., v0.19.0, bookworm, 3.11)"
-    required: true
+    description: "Floating image tag (e.g., latest, v0.19.0). Short and long commit SHA tags are always added alongside it."
+    required: false
+    default: "latest"
   registry:
     description: "Container registry URL"
     required: true
