@@ -21,6 +21,10 @@ inputs:
     description: "Whether to push the image to the registry"
     required: false
     default: "false"
+  build_args:
+    description: "Extra docker build args, newline-delimited (e.g., VERSION=1.2.3). Applied to both the build and push steps."
+    required: false
+    default: ""
   gcp_service_account:
     description: "GCP service account for authentication"
     required: true
@@ -85,6 +89,7 @@ runs:
         cache-to: type=registry,ref=${{ inputs.image_repository }}/${{ inputs.image_name }}:buildcache-${{ inputs.image_tag }},mode=max
         build-args: |
           IMAGE_REPOSITORY=${{ inputs.image_repository }}
+          ${{ inputs.build_args }}
 
     - name: Generate SBOM
       id: sbom
@@ -125,6 +130,7 @@ runs:
         cache-from: type=registry,ref=${{ inputs.image_repository }}/${{ inputs.image_name }}:buildcache-${{ inputs.image_tag }}
         build-args: |
           IMAGE_REPOSITORY=${{ inputs.image_repository }}
+          ${{ inputs.build_args }}
 
     - name: Install Cosign
       if: ${{ inputs.push == 'true' }}
