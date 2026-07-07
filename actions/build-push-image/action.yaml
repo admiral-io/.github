@@ -31,6 +31,10 @@ inputs:
   gcp_workload_identity_provider:
     description: "GCP workload identity provider"
     required: true
+  build_secrets:
+    description: "Newline-delimited BuildKit secrets (id=value) forwarded to docker build, e.g. GITHUB_TOKEN=***"
+    required: false
+    default: ""
 
 runs:
   using: "composite"
@@ -90,6 +94,7 @@ runs:
         build-args: |
           IMAGE_REPOSITORY=${{ inputs.image_repository }}
           ${{ inputs.build_args }}
+        secrets: ${{ inputs.build_secrets }}
 
     - name: Generate SBOM
       id: sbom
@@ -131,6 +136,7 @@ runs:
         build-args: |
           IMAGE_REPOSITORY=${{ inputs.image_repository }}
           ${{ inputs.build_args }}
+        secrets: ${{ inputs.build_secrets }}
 
     - name: Install Cosign
       if: ${{ inputs.push == 'true' }}
