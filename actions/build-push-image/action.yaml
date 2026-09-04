@@ -48,10 +48,10 @@ runs:
         workload_identity_provider: ${{ inputs.gcp_workload_identity_provider }}
 
     - name: Set up Docker Buildx with BuildKit sidecar
-      uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+      uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
     - name: Login to Container Registry
-      uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+      uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
       with:
         registry: ${{ inputs.registry }}
         username: oauth2accesstoken
@@ -59,7 +59,7 @@ runs:
 
     - name: Generate build metadata
       id: meta
-      uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6.1.0
+      uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
       with:
         images: ${{ inputs.image_repository }}/${{ inputs.image_name }}
         tags: |
@@ -82,7 +82,7 @@ runs:
       run: echo "dir=$(dirname '${{ inputs.dockerfile_path }}')" >> $GITHUB_OUTPUT
 
     - name: Build image and populate cache
-      uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+      uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
       with:
         context: ${{ steps.dockerfile_dir.outputs.dir }}
         load: true
@@ -98,7 +98,7 @@ runs:
 
     - name: Generate SBOM
       id: sbom
-      uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+      uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
       with:
         image: ${{ inputs.image_repository }}/${{ inputs.image_name }}:${{ inputs.image_tag }}
         format: spdx-json
@@ -108,7 +108,7 @@ runs:
 
     - name: Scan image for vulnerabilities
       id: scan
-      uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+      uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
       with:
         image: ${{ inputs.image_repository }}/${{ inputs.image_name }}:${{ inputs.image_tag }}
         output-format: sarif
@@ -118,7 +118,7 @@ runs:
     - name: Upload scan results to GitHub Security
       if: ${{ !cancelled() && steps.scan.outputs.sarif != '' }}
       continue-on-error: true
-      uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+      uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
       with:
         sarif_file: ${{ steps.scan.outputs.sarif }}
         category: ${{ inputs.image_name }}-${{ inputs.image_tag }}
@@ -126,7 +126,7 @@ runs:
     - name: Push image to registry
       id: push
       if: ${{ inputs.push == 'true' }}
-      uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+      uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
       with:
         context: ${{ steps.dockerfile_dir.outputs.dir }}
         push: true
