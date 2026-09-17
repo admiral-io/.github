@@ -13,6 +13,7 @@
   "labels": ["dependencies"],
   "prConcurrentLimit": 10,
   "rangeStrategy": "bump",
+  "postUpdateOptions": ["gomodTidy"],
   "minimumReleaseAge": "7 days",
   "internalChecksFilter": "strict",
   "osvVulnerabilityAlerts": true,
