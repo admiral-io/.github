@@ -3,7 +3,7 @@ description: "Install a released admiral CLI binary, checksum-verified, and put 
 
 inputs:
   version:
-    description: "Release to install: a tag of admiral-io/admiral-cli such as v0.2.0, or latest (the default) for the newest non-prerelease"
+    description: "Release of admiral-io/admiral-cli to install: a tag, or latest (the default) for the newest non-prerelease"
     required: false
     default: "latest"
   github-token:
