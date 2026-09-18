@@ -21,23 +21,49 @@ runs:
         VERSION: ${{ inputs.version }}
       run: |
         set -euo pipefail
+
+        repo="admiral-io/admiral-cli"
+
+        # "latest" is the newest release that is neither a draft nor a
+        # prerelease; anything else is taken as a tag.
         if [ "$VERSION" = "latest" ]; then
-          VERSION="$(gh release list --repo admiral-io/admiral-cli --exclude-drafts --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName')"
-          [ -n "$VERSION" ] || { echo "no release found for admiral-io/admiral-cli" >&2; exit 1; }
+          VERSION="$(gh release list --repo "$repo" \
+            --exclude-drafts --exclude-pre-releases --limit 1 \
+            --json tagName --jq '.[0].tagName')"
+          if [ -z "$VERSION" ]; then
+            echo "no release found for ${repo}" >&2
+            exit 1
+          fi
           echo "Resolved latest to ${VERSION}"
         fi
+
+        # Archive names follow the CLI's goreleaser template:
+        #   admiral-<version>_<os>_<arch>.tar.gz, with amd64 spelled x86_64.
         case "$(uname -m)" in
-          x86_64)  arch=x86_64 ;;
-          aarch64|arm64) arch=arm64 ;;
-          *) echo "unsupported architecture $(uname -m)" >&2; exit 1 ;;
+          x86_64)        arch="x86_64" ;;
+          aarch64|arm64) arch="arm64" ;;
+          *)
+            echo "unsupported architecture: $(uname -m)" >&2
+            exit 1
+            ;;
         esac
         os="$(uname -s | tr '[:upper:]' '[:lower:]')"
         archive="admiral-${VERSION}_${os}_${arch}.tar.gz"
+
         dir="${RUNNER_TEMP}/admiral-cli"
-        mkdir -p "$dir" && cd "$dir"
-        gh release download "$VERSION" --repo admiral-io/admiral-cli --pattern "$archive" --pattern checksums.txt
+        mkdir -p "$dir"
+        cd "$dir"
+
+        # Download the archive and the release's checksum list, and refuse
+        # anything that does not match before unpacking it.
+        gh release download "$VERSION" --repo "$repo" \
+          --pattern "$archive" --pattern "checksums.txt"
         grep " ${archive}\$" checksums.txt | sha256sum --check --quiet -
-        tar -xzf "$archive" --strip-components=1 admiral-${VERSION}_${os}_${arch}/admiral
+
+        # The archive wraps its files in a directory named after itself;
+        # only the binary is wanted.
+        tar -xzf "$archive" --strip-components=1 "${archive%.tar.gz}/admiral"
         chmod 0755 admiral
+
         echo "$dir" >> "$GITHUB_PATH"
         ./admiral --version
