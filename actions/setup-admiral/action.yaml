@@ -1,0 +1,37 @@
+name: "Setup Admiral CLI"
+description: "Install a released admiral CLI binary, checksum-verified, and put it on PATH"
+
+inputs:
+  version:
+    description: "Release to install, e.g. v0.2.0 (a tag of admiral-io/admiral-cli)"
+    required: true
+  github-token:
+    description: "GitHub token for the release download"
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Download and verify
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        case "$(uname -m)" in
+          x86_64)  arch=x86_64 ;;
+          aarch64|arm64) arch=arm64 ;;
+          *) echo "unsupported architecture $(uname -m)" >&2; exit 1 ;;
+        esac
+        os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+        archive="admiral-${VERSION}_${os}_${arch}.tar.gz"
+        dir="${RUNNER_TEMP}/admiral-cli"
+        mkdir -p "$dir" && cd "$dir"
+        gh release download "$VERSION" --repo admiral-io/admiral-cli --pattern "$archive" --pattern checksums.txt
+        grep " ${archive}\$" checksums.txt | sha256sum --check --quiet -
+        tar -xzf "$archive" --strip-components=1 admiral-${VERSION}_${os}_${arch}/admiral
+        chmod 0755 admiral
+        echo "$dir" >> "$GITHUB_PATH"
+        ./admiral --version
