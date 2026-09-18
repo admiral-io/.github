@@ -3,8 +3,9 @@ description: "Install a released admiral CLI binary, checksum-verified, and put 
 
 inputs:
   version:
-    description: "Release to install, e.g. v0.2.0 (a tag of admiral-io/admiral-cli)"
-    required: true
+    description: "Release to install: a tag of admiral-io/admiral-cli such as v0.2.0, or latest (the default) for the newest non-prerelease"
+    required: false
+    default: "latest"
   github-token:
     description: "GitHub token for the release download"
     required: false
@@ -20,6 +21,11 @@ runs:
         VERSION: ${{ inputs.version }}
       run: |
         set -euo pipefail
+        if [ "$VERSION" = "latest" ]; then
+          VERSION="$(gh release list --repo admiral-io/admiral-cli --exclude-drafts --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName')"
+          [ -n "$VERSION" ] || { echo "no release found for admiral-io/admiral-cli" >&2; exit 1; }
+          echo "Resolved latest to ${VERSION}"
+        fi
         case "$(uname -m)" in
           x86_64)  arch=x86_64 ;;
           aarch64|arm64) arch=arm64 ;;
