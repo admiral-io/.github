@@ -23,12 +23,18 @@ GitHub automatically surfaces these files in any Admiral repository that
 doesn't define its own copy. To override for a specific repo, add the file
 to that repo's root or `.github/` directory.
 
-## Renovate preset
+## Renovate
+
+Renovate is self-hosted: [`.github/workflows/renovate.yaml`](.github/workflows/renovate.yaml)
+runs it hourly as a dedicated GitHub App (`RENOVATE_APP_ID` and
+`RENOVATE_APP_PRIVATE_KEY`, org-level). It is not the Mend-hosted app,
+because that app cannot read private Go modules (`github.com/admiral-io/*`)
+and left every SDK bump with a stale `go.sum`. A repo is opted in by
+installing the App on it; Renovate discovers repos through the installation.
 
 `default.json` is the org-wide [Renovate](https://docs.renovatebot.com/)
-configuration preset. Once the Renovate GitHub App is installed on the
-admiral-io organization, each repo can extend it via a minimal
-`renovate.json` at the repo root:
+configuration preset. Each repo extends it via a minimal `renovate.json` at
+the repo root:
 
 ```json
 {
@@ -37,8 +43,8 @@ admiral-io organization, each repo can extend it via a minimal
 }
 ```
 
-Renovate's onboarding PRs reference this preset automatically, so most
-repos only need to merge the onboarding PR.
+Renovate's onboarding PRs propose exactly this file, so most repos only need
+to merge the onboarding PR.
 
 To override behavior for a specific repo (e.g., disable a packageRule
 or change schedule), add the override after the `extends` entry.
