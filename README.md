@@ -25,12 +25,9 @@ to that repo's root or `.github/` directory.
 
 ## Renovate
 
-Renovate is self-hosted: [`.github/workflows/renovate.yaml`](.github/workflows/renovate.yaml)
-runs it hourly as the org CI App (`GH_APP_ID` and `GH_APP_PRIVATE_KEY`,
-org-level). It is not the Mend-hosted app,
-because that app cannot read private Go modules (`github.com/admiral-io/*`)
-and left every SDK bump with a stale `go.sum`. A repo is opted in by
-installing the App on it; Renovate discovers repos through the installation.
+Renovate is self-hosted. It is not the Mend-hosted app because it cannot read
+private modules. A repo is opted in by installing the CI App on it; Renovate
+discovers repos through the installation.
 
 `default.json` is the org-wide [Renovate](https://docs.renovatebot.com/)
 configuration preset. Each repo extends it via a minimal `renovate.json` at
