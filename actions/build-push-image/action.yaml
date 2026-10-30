@@ -152,12 +152,58 @@ runs:
       uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
       with:
         image: ${{ inputs.image_repository }}/${{ inputs.image_name }}:${{ inputs.image_tag }}
-        output-format: sarif
+        output-format: json
         severity-cutoff: critical
         fail-build: false
         # The vulnerability DB is about a minute to download and install;
         # restored from the Actions cache, it is only checked for updates.
         cache-db: true
+
+    # The findings go to the run's summary, where anyone looking at the run
+    # sees them. They used to be uploaded as SARIF to the Security tab, which
+    # needs GitHub Code Security, off on every Admiral repository, so nothing
+    # ever arrived there.
+    - name: Summarize scan findings
+      if: ${{ !cancelled() && steps.scan.outputs.json != '' }}
+      shell: bash
+      env:
+        REPORT: ${{ steps.scan.outputs.json }}
+        IMAGE: ${{ inputs.image_name }}:${{ inputs.image_tag }}
+      run: |
+        set -euo pipefail
+        {
+          echo "### Vulnerabilities in ${IMAGE}"
+          echo
+          jq -r '
+            [.matches[] | [.vulnerability.severity, .vulnerability.id, .artifact.name, .artifact.version]]
+            | unique | map(.[0]) as $s
+            | ["Critical","High","Medium","Low","Negligible","Unknown"]
+            | map(. as $level | "\($level): \([$s[] | select(. == $level)] | length)")
+            | join(" · ")' "$REPORT"
+          echo
+          if [ "$(jq '[.matches[] | select(.vulnerability.severity == "Critical" or .vulnerability.severity == "High")] | length' "$REPORT")" -gt 0 ]; then
+            echo "| Severity | Vulnerability | Package | Installed | Fixed in |"
+            echo "|---|---|---|---|---|"
+            jq -r '
+              [.matches[]
+               | select(.vulnerability.severity == "Critical" or .vulnerability.severity == "High")
+               | [.vulnerability.severity, .vulnerability.id, .artifact.name, .artifact.version,
+                  ((.vulnerability.fix.versions // []) | join(", ") | if . == "" then "no fix" else . end)]]
+              | unique | sort_by(.[0] != "Critical", .[1]) | .[:50][]
+              | "| \(.[0]) | \(.[1]) | \(.[2]) | \(.[3]) | \(.[4]) |"' "$REPORT"
+          else
+            echo "No critical or high findings."
+          fi
+        } | tee -a "$GITHUB_STEP_SUMMARY"
+
+    - name: Keep the full scan report
+      if: ${{ !cancelled() && steps.scan.outputs.json != '' }}
+      continue-on-error: true
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: grype-${{ inputs.image_name }}-${{ github.job }}
+        path: ${{ steps.scan.outputs.json }}
+        retention-days: 30
 
     - name: Push image to registry
       id: push
@@ -200,16 +246,6 @@ runs:
         SBOM_FILE: ${{ github.workspace }}/sbom.spdx.json
       run: cosign attest --yes --predicate "${SBOM_FILE}" --type spdxjson "${IMAGE}@${DIGEST}"
 
-    # After the push and signing: the scan never gates the push
-    # (fail-build: false), so its upload need not hold the image back.
-    - name: Upload scan results to GitHub Security
-      if: ${{ !cancelled() && steps.scan.outputs.sarif != '' }}
-      continue-on-error: true
-      uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
-      with:
-        sarif_file: ${{ steps.scan.outputs.sarif }}
-        category: ${{ inputs.image_name }}-${{ inputs.image_tag }}
-
     - name: Build summary
       shell: bash
       env:
@@ -226,7 +262,7 @@ runs:
 
         # The scan reports and never fails the build (fail-build: false), so
         # this cannot say whether it found anything.
-        echo "🔍 Vulnerability scan ran; findings are in the repository's Security tab"
+        echo "🔍 Vulnerability scan ran; findings are in this run's summary, the full report is the grype-* artifact"
 
         echo "📋 SBOM generated (SPDX)"
 
