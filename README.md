@@ -9,6 +9,7 @@ organization, and the organization profile.
 - [SECURITY.md](SECURITY.md): how to report a security vulnerability
 - [.github/ISSUE_TEMPLATE](.github/ISSUE_TEMPLATE): the default bug and feature forms
 - [actions/setup-admiral](actions/setup-admiral/action.yaml): installs the `admiral` CLI in a GitHub Actions workflow
+- [actions/go-quality](actions/go-quality/action.yaml): measures a Go module (complexity, size, duplication, cohesion, fan-in and fan-out, comments) and fails a change that adds a finding its committed baseline does not accept. Run `quality.sh` beside it for the same check locally
 
 A bug in one repository's code is filed in that repository. Everything else,
 including questions, goes to
