@@ -10,6 +10,18 @@ inputs:
     description: "A coverprofile to report coverage from, optional"
     required: false
     default: ""
+  ratchet:
+    description: "false to report without the ratchet, for a scheduled run; it then fails only on a fuzz crash"
+    required: false
+    default: "true"
+  mutation:
+    description: "true to run gremlins mutation testing"
+    required: false
+    default: "false"
+  fuzz-time:
+    description: "How long to fuzz each Fuzz target, such as 5m; empty skips fuzzing"
+    required: false
+    default: ""
   reset-label:
     description: "A pull request label that lifts the baseline-growth check, for a tool upgrade that rewords findings"
     required: false
@@ -18,6 +30,20 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Locate the fuzz cache
+      id: fuzzcache
+      if: inputs.fuzz-time != ''
+      shell: bash
+      run: echo "dir=$(go env GOCACHE)/fuzz" >> "$GITHUB_OUTPUT"
+    # Restore and save are split because the combined action saves only on success, which
+    # would drop the corpus in exactly the run that found a crash.
+    - name: Restore fuzz corpus
+      if: inputs.fuzz-time != ''
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.fuzzcache.outputs.dir }}
+        key: go-fuzz-corpus-${{ github.run_id }}
+        restore-keys: go-fuzz-corpus-
     - name: Measure and check
       id: check
       shell: bash
@@ -25,6 +51,9 @@ runs:
         QUALITY_BASELINE: ${{ inputs.baseline }}
         QUALITY_COVERAGE: ${{ inputs.coverage-profile }}
         QUALITY_OUT: .quality
+        QUALITY_MUTATION: ${{ inputs.mutation }}
+        QUALITY_FUZZ_TIME: ${{ inputs.fuzz-time }}
+        RATCHET: ${{ inputs.ratchet }}
         BASELINE_RESET: ${{ contains(github.event.pull_request.labels.*.name, inputs.reset-label) }}
         BASE_REF: ${{ github.base_ref }}
       run: |
@@ -32,12 +61,30 @@ runs:
           git fetch --no-tags --depth=1 origin "$BASE_REF"
           export QUALITY_BASE_REF=FETCH_HEAD
         fi
+        mode=all
+        if [ "$RATCHET" = "false" ]; then
+          mode=report
+        fi
         status=0
-        "$GITHUB_ACTION_PATH/quality.sh" || status=$?
+        "$GITHUB_ACTION_PATH/quality.sh" "$mode" || status=$?
         echo "status=$status" >> "$GITHUB_OUTPUT"
         if [ -f .quality/summary.md ]; then
           cat .quality/summary.md >> "$GITHUB_STEP_SUMMARY"
         fi
+    - name: Save fuzz corpus
+      if: always() && inputs.fuzz-time != ''
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.fuzzcache.outputs.dir }}
+        key: go-fuzz-corpus-${{ github.run_id }}
+    - name: Upload crashing inputs
+      if: always() && inputs.fuzz-time != '' && steps.check.outputs.status != '0' && hashFiles('**/testdata/fuzz/**') != ''
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: fuzz-crashes
+        path: "**/testdata/fuzz/**"
+        retention-days: 30
+        overwrite: true
     - name: Upload quality report
       if: always()
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -52,5 +99,5 @@ runs:
       if: steps.check.outputs.status != '0'
       shell: bash
       run: |
-        echo "::error::The quality ratchet failed. The job summary and the quality-report artifact name each finding."
+        echo "::error::The quality check failed. The job summary and the quality-report artifact name each finding."
         exit 1

@@ -7,6 +7,8 @@ script serves the per-push run and the weekly one:
   golangci.json      golangci-lint with this action's golangci.yml
   metrics.json       gometrics: package fan-in and fan-out, type cohesion, file size, comments
   coverage.txt       go tool cover -func output
+  mutation.json      gremlins: mutants the tests did not catch
+  fuzz.tsv, fuzz/    go test -fuzz: one line per target, and each target's log
 
 Always writes quality-report.json (an agent reads this to find gaps) and summary.md (CI
 appends it to the job summary). The report and baseline formats match the Java services'.
@@ -166,6 +168,52 @@ def coverage(out):
     tools["coverage"] = {"statement_percent": total}
 
 
+def mutation(out):
+    path = os.path.join(out, "mutation.json")
+    if not os.path.exists(path):
+        return
+    data = json.load(open(path))
+    status = Counter()
+    for f in data.get("files") or []:
+        for m in f.get("mutations") or []:
+            status[m["status"]] += 1
+            if m["status"] == "LIVED":
+                add("gremlins", "LIVED", f["file_name"], m.get("line"),
+                    "Tests pass with %s changed at column %s" % (m["type"], m.get("column")), "test-strength")
+    killed, lived = status["KILLED"], status["LIVED"]
+    metrics["mutation"] = {
+        "total": sum(status.values()),
+        "by_status": dict(status),
+        "efficacy_percent": round(100 * killed / (killed + lived), 1) if killed + lived else None,
+        "mutant_coverage_percent": data.get("mutations_coverage"),
+    }
+    tools["gremlins"] = {"mutants": metrics["mutation"]["total"], "efficacy_percent": metrics["mutation"]["efficacy_percent"]}
+
+
+def fuzz(out):
+    path = os.path.join(out, "fuzz.tsv")
+    if not os.path.exists(path):
+        return
+    targets = crashes = 0
+    for line in open(path):
+        parts = line.rstrip("\n").split("\t")
+        if len(parts) != 3:
+            continue
+        directory, name, status = parts
+        targets += 1
+        if status != "crash":
+            continue
+        crashes += 1
+        log = os.path.join(out, "fuzz", "%s.%s.log" % (directory.replace("/", "_"), name))
+        detail = ""
+        if os.path.exists(log):
+            lines = [l.strip() for l in open(log, errors="replace") if l.strip()]
+            failing = [l for l in lines if "_test.go:" in l or l.startswith("Failing input")]
+            detail = " ".join(failing[:3]) or " ".join(lines[-3:])
+        add("gofuzz", "Crash", directory + "/", None, "%s: %s" % (name, detail[:500]), "robustness")
+    tools["gofuzz"] = {"targets": targets, "crashes": crashes}
+
+
 def ratchet(baseline_path, base_path, renames):
     """Compares with the baseline. Returns (new, fixed, grown) as lists of fingerprints."""
     ran = RATCHETED & set(tools)
@@ -220,6 +268,14 @@ def summary(outcome, baseline):
             lines += ["- `%s`" % fp for fp in grown[:20]]
             lines.append("")
 
+    crashes = [f for f in findings if f["tool"] == "gofuzz"]
+    if crashes:
+        lines += ["### Fuzz crashes (%d)" % len(crashes), "",
+                  "Each is a bug. Download the fuzz-crashes artifact, commit the input under the "
+                  "package's `testdata/fuzz/<target>/` so every `go test` replays it, and fix the code.", ""]
+        lines += ["- `%s` %s" % (f["file"], f["message"][:300]) for f in crashes]
+        lines.append("")
+
     by_tool = Counter(f["tool"] for f in findings)
     lines += ["### All findings", "", "| Tool | Findings | Notes |", "|---|---|---|"]
     for tool in tools:
@@ -233,6 +289,12 @@ def summary(outcome, baseline):
                 s["packages"], tools["gometrics"]["hotspots"], s["code_lines"], s["comment_percent"])
         if tool == "coverage":
             note = "statements %s%%" % metrics["coverage"]["statement_percent"]
+        if tool == "gremlins":
+            m = metrics["mutation"]
+            note = "%d mutants, efficacy %s%%, %d not covered" % (
+                m["total"], m["efficacy_percent"], m["by_status"].get("NOT COVERED", 0))
+        if tool == "gofuzz":
+            note = "%d targets, %d crashed" % (tools["gofuzz"]["targets"], tools["gofuzz"]["crashes"])
         count = "" if tool == "coverage" else by_tool.get(tool, 0)
         lines.append("| %s | %s | %s |" % (tool, count, note))
     lines.append("")
@@ -262,7 +324,7 @@ def main():
     parser.add_argument("--write-baseline", metavar="BASELINE")
     args = parser.parse_args()
 
-    for collect in (golangci, gometrics, coverage):
+    for collect in (golangci, gometrics, coverage, mutation, fuzz):
         collect(args.out)
 
     if args.write_baseline:
@@ -303,6 +365,8 @@ def main():
     print(text)
 
     if outcome and any(outcome):
+        sys.exit(1)
+    if tools.get("gofuzz", {}).get("crashes"):
         sys.exit(1)
 
 
