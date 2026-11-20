@@ -33,7 +33,7 @@ runs:
           export QUALITY_BASE_REF=FETCH_HEAD
         fi
         status=0
-        "$GITHUB_ACTION_PATH/quality.sh" > /dev/null || status=$?
+        "$GITHUB_ACTION_PATH/quality.sh" || status=$?
         echo "status=$status" >> "$GITHUB_OUTPUT"
         if [ -f .quality/summary.md ]; then
           cat .quality/summary.md >> "$GITHUB_STEP_SUMMARY"
@@ -46,6 +46,8 @@ runs:
         path: .quality
         retention-days: 30
         overwrite: true
+        include-hidden-files: true
+        if-no-files-found: error
     - name: Fail on a new finding
       if: steps.check.outputs.status != '0'
       shell: bash
